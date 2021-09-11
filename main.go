@@ -56,9 +56,11 @@ func main() {
 	var (
 		accessToken string
 		orgName     string
+		ugly        bool
 	)
 	flag.StringVar(&accessToken, "token", "", "Github access token")
 	flag.StringVar(&orgName, "org-name", "", "Organization name")
+	flag.BoolVar(&ugly, "be-ugly", false, "Use no color, nothing fancy mode")
 	flag.Parse()
 
 	if len(accessToken) == 0 || len(orgName) == 0 {
@@ -152,12 +154,27 @@ func main() {
 				white = "\033[37m"
 			)
 
-			fmt.Printf("%s%s%s\n", bold, r.RepoName, reset)
+			if ugly {
+				fmt.Println(r.RepoName)
+			} else {
+				fmt.Printf("%s%s%s\n", bold, r.RepoName, reset)
+			}
 			sort.Sort(LatestUpdatedAndStatus(r.Pulls))
 			for _, pull := range r.Pulls {
 				if !isFreshPullRequest(pull) {
 					continue
 				}
+
+				if ugly {
+					status := "Ready"
+					if pull.state == Draft {
+						status = "Draft"
+
+					}
+					fmt.Printf("  %s\t- %s => %s (%s)\n", status, pull.by, pull.title, pull.link)
+					continue
+				}
+
 				fmt.Print("  ")
 				if pull.state == Draft {
 					fmt.Printf("%sDraft%s", white, reset)

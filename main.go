@@ -94,10 +94,12 @@ func main() {
 		accessToken string
 		orgName     string
 		ugly        bool
+		showLegacy  bool
 	)
 	flag.StringVar(&accessToken, "token", "", "Github access token")
 	flag.StringVar(&orgName, "org-name", "", "Organization name")
 	flag.BoolVar(&ugly, "be-ugly", false, "Use no color, nothing fancy mode")
+	flag.BoolVar(&showLegacy, "show-legacy", false, "Show PRs older than 2 weeks")
 	flag.Parse()
 
 	configExists, err := configFileExists()
@@ -142,7 +144,7 @@ func main() {
 		}
 	}
 	if !hasAccess {
-		fmt.Println("No access to org: ", orgName)
+		fmt.Println("No access to organization: ", orgName)
 		os.Exit(1)
 	}
 
@@ -157,7 +159,6 @@ func main() {
 	for _, repo := range repos {
 		wwg.Add(1)
 
-		// AP: how does goroutine access the surrounding variables?
 		go func(wg *sync.WaitGroup, name string) {
 			defer wg.Done()
 			// fmt.Println(name + "\n")
@@ -204,7 +205,7 @@ func main() {
 					break
 				}
 			}
-			if !hasFreshPrs || len(r.Pulls) == 0 {
+			if (!hasFreshPrs && !showLegacy) || len(r.Pulls) == 0 {
 				continue
 			}
 
@@ -222,7 +223,7 @@ func main() {
 			}
 			sort.Sort(LatestUpdatedAndStatus(r.Pulls))
 			for _, pull := range r.Pulls {
-				if !isFreshPullRequest(pull) {
+				if !isFreshPullRequest(pull) && !showLegacy {
 					continue
 				}
 

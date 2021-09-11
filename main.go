@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"flag"
 	"fmt"
 	"os"
@@ -60,12 +59,10 @@ func main() {
 			hasAccess = true
 			break
 		}
-		b, _ := json.MarshalIndent(org, "", " ")
-		fmt.Println(string(b) + "\n")
+		// b, _ := json.MarshalIndent(org, "", " ")
+		// fmt.Println(string(b) + "\n")
 	}
-	if hasAccess {
-		fmt.Println("Access to org: ", orgName)
-	} else {
+	if !hasAccess {
 		fmt.Println("No access to org: ", orgName)
 		os.Exit(1)
 	}
@@ -84,7 +81,7 @@ func main() {
 		// AP: how does goroutine access the surrounding variables?
 		go func(wg *sync.WaitGroup, name string) {
 			defer wg.Done()
-			fmt.Println(name + "\n")
+			// fmt.Println(name + "\n")
 			pulls, _, err := client.PullRequests.List(ctx, orgName, name, nil)
 			if err != nil {
 				panic(err)
@@ -132,14 +129,27 @@ func main() {
 				continue
 			}
 
-			fmt.Println(r.RepoName)
+			const (
+				reset = "\033[0m"
+				bold  = "\033[1m"
+				green = "\033[32m"
+				white = "\033[37m"
+			)
+
+			fmt.Printf("%s%s%s\n", bold, r.RepoName, reset)
 			for _, pull := range r.Pulls {
 				if !isFreshPullRequest(pull) {
 					continue
 				}
-
-				fmt.Println("  ", pull.state+" - "+pull.by+" -> "+pull.title)
-				fmt.Println("    ", pull.link)
+				fmt.Print("  ")
+				if pull.state == "Draft" {
+					fmt.Printf("%s%s%s", white, pull.state, reset)
+				} else {
+					fmt.Printf("%s%s%s", green, pull.state, reset)
+				}
+				fmt.Printf("\t- %s => ", pull.by)
+				fmt.Printf("\033]8;;%s\a%s\033]8;;\a", pull.link, pull.title)
+				fmt.Printf("\n")
 			}
 		}
 	}(&rwg, channel)

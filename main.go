@@ -21,9 +21,17 @@ func authenticatedGithubClient(accessToken string) *github.Client {
 	return github.NewClient(tc)
 }
 
-type RepoPrs struct {
+type PullRequest struct {
+	title     string
+	by        string
+	link      string
+	state     string
+	updatedAt time.Time
+}
+
+type Repository struct {
 	RepoName string
-	Pulls    []*github.PullRequest
+	Pulls    []PullRequest
 }
 
 func main() {
@@ -67,7 +75,7 @@ func main() {
 		panic(err)
 	}
 
-	var repoPrs []RepoPrs
+	var repoPrs []Repository
 	for _, repo := range repos {
 		fmt.Println(*repo.Name + "\n")
 		pulls, _, err := client.PullRequests.List(ctx, orgName, *repo.Name, nil)
@@ -75,7 +83,23 @@ func main() {
 			panic(err)
 		}
 
-		t := RepoPrs{RepoName: *repo.Name, Pulls: pulls}
+		var prs []PullRequest
+		for _, pull := range pulls {
+			state := "OK"
+			if *pull.Draft {
+				state = "Draft"
+			}
+
+			prs = append(prs, PullRequest{
+				title:     *pull.Title,
+				by:        *pull.User.Login,
+				link:      *pull.HTMLURL,
+				state:     state,
+				updatedAt: *pull.UpdatedAt,
+			})
+		}
+
+		t := Repository{RepoName: *repo.Name, Pulls: prs}
 		repoPrs = append(repoPrs, t)
 	}
 
@@ -97,20 +121,12 @@ func main() {
 				continue
 			}
 
-			title := *pull.Title
-			by := *pull.User.Login
-			link := *pull.HTMLURL
-			rstate := "OK"
-			if *pull.Draft {
-				rstate = "Draft"
-			}
-
-			fmt.Println("  ", rstate+" - "+by+" -> "+title)
-			fmt.Println("    ", link)
+			fmt.Println("  ", pull.state+" - "+pull.by+" -> "+pull.title)
+			fmt.Println("    ", pull.link)
 		}
 	}
 }
 
-func isFreshPullRequest(pr *github.PullRequest) bool {
-	return pr.UpdatedAt.After(time.Now().AddDate(0, 0, -14))
+func isFreshPullRequest(pr PullRequest) bool {
+	return pr.updatedAt.After(time.Now().AddDate(0, 0, -14))
 }

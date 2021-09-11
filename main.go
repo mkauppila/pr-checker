@@ -5,6 +5,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"sort"
 	"sync"
 	"time"
 
@@ -21,13 +22,30 @@ func authenticatedGithubClient(accessToken string) *github.Client {
 	return github.NewClient(tc)
 }
 
+type PullRequestStatus int
+
+const (
+	Draft PullRequestStatus = iota
+	Open
+)
+
 type PullRequest struct {
 	title     string
 	by        string
 	link      string
-	state     string
+	state     PullRequestStatus
 	updatedAt time.Time
 }
+
+type LatestUpdatedAndStatus []PullRequest
+
+func (l LatestUpdatedAndStatus) Len() int { return len(l) }
+
+func (l LatestUpdatedAndStatus) Less(i, j int) bool {
+	return l[i].updatedAt.Before(l[j].updatedAt) && l[i].state > l[j].state
+}
+
+func (l LatestUpdatedAndStatus) Swap(i, j int) { l[i], l[j] = l[j], l[i] }
 
 type Repository struct {
 	RepoName string
@@ -59,8 +77,6 @@ func main() {
 			hasAccess = true
 			break
 		}
-		// b, _ := json.MarshalIndent(org, "", " ")
-		// fmt.Println(string(b) + "\n")
 	}
 	if !hasAccess {
 		fmt.Println("No access to org: ", orgName)
@@ -89,9 +105,9 @@ func main() {
 
 			var prs []PullRequest
 			for _, pull := range pulls {
-				state := "OK"
+				state := Open
 				if *pull.Draft {
-					state = "Draft"
+					state = Draft
 				}
 
 				prs = append(prs, PullRequest{
@@ -137,15 +153,16 @@ func main() {
 			)
 
 			fmt.Printf("%s%s%s\n", bold, r.RepoName, reset)
+			sort.Sort(LatestUpdatedAndStatus(r.Pulls))
 			for _, pull := range r.Pulls {
 				if !isFreshPullRequest(pull) {
 					continue
 				}
 				fmt.Print("  ")
-				if pull.state == "Draft" {
-					fmt.Printf("%s%s%s", white, pull.state, reset)
+				if pull.state == Draft {
+					fmt.Printf("%sDraft%s", white, reset)
 				} else {
-					fmt.Printf("%s%s%s", green, pull.state, reset)
+					fmt.Printf("%sReady%s", green, reset)
 				}
 				fmt.Printf("\t- %s => ", pull.by)
 				fmt.Printf("\033]8;;%s\a%s\033]8;;\a", pull.link, pull.title)

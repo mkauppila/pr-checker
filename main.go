@@ -2,9 +2,11 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"os"
+	"path/filepath"
 	"sort"
 	"sync"
 	"time"
@@ -52,6 +54,41 @@ type Repository struct {
 	Pulls    []PullRequest
 }
 
+type Config struct {
+	AccessToken string
+	OrgName     string
+	Ugly        bool
+}
+
+func configFileExists() (bool, error) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return false, fmt.Errorf("no user home directory. Error: %s", err)
+	}
+	if _, err := os.Stat(filepath.Join(home, ".pr-checker", "config.json")); err != nil {
+		return false, err
+	}
+
+	return true, nil
+}
+
+func readConfigFile() (Config, error) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return Config{}, fmt.Errorf("no user home directory. Error: %s", err)
+	}
+	// We know the file exists so skip the error
+	file, _ := os.ReadFile(filepath.Join(home, ".pr-checker", "config.json"))
+
+	var config Config
+	// read the confs from here and that's it!
+	if err := json.Unmarshal(file, &config); err != nil {
+		return Config{}, fmt.Errorf("failed to parse config file. Error: %s", err)
+	}
+
+	return config, nil
+}
+
 func main() {
 	var (
 		accessToken string
@@ -63,8 +100,32 @@ func main() {
 	flag.BoolVar(&ugly, "be-ugly", false, "Use no color, nothing fancy mode")
 	flag.Parse()
 
+	configExists, err := configFileExists()
+	if err != nil {
+		fmt.Println("Issue with config. Error: ", err)
+		os.Exit(1)
+	}
+
+	if configExists {
+		conf, err := readConfigFile()
+		if err != nil {
+			fmt.Println("Config.json found with error: ", err)
+			os.Exit(1)
+		}
+		if accessToken == "" {
+			accessToken = conf.AccessToken
+		}
+		if orgName == "" {
+			orgName = conf.OrgName
+		}
+		// FIXME: does't work together with the config file override
+		if !ugly {
+			ugly = conf.Ugly
+		}
+	}
+
 	if len(accessToken) == 0 || len(orgName) == 0 {
-		fmt.Println("Missing command line args")
+		fmt.Println("Missing command line args or a config file at `$HOME/.pr-checker/config.json")
 		fmt.Println("Run: pr-checker --help")
 		os.Exit(0)
 	}

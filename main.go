@@ -6,6 +6,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"sync"
 	"time"
 
 	"github.com/google/go-github/v39/github"
@@ -52,7 +53,6 @@ func main() {
 	client := authenticatedGithubClient(accessToken)
 
 	ctx := context.Background()
-
 	orgs, _, _ := client.Organizations.ListOrgMemberships(ctx, nil)
 	hasAccess := false
 	for _, org := range orgs {
@@ -75,56 +75,78 @@ func main() {
 		panic(err)
 	}
 
-	var repoPrs []Repository
-	for _, repo := range repos {
-		fmt.Println(*repo.Name + "\n")
-		pulls, _, err := client.PullRequests.List(ctx, orgName, *repo.Name, nil)
-		if err != nil {
-			panic(err)
-		}
+	var wwg sync.WaitGroup
+	channel := make(chan Repository)
 
-		var prs []PullRequest
-		for _, pull := range pulls {
-			state := "OK"
-			if *pull.Draft {
-				state = "Draft"
+	for _, repo := range repos {
+		wwg.Add(1)
+
+		// AP: how does goroutine access the surrounding variables?
+		go func(wg *sync.WaitGroup, name string) {
+			defer wg.Done()
+			fmt.Println(name + "\n")
+			pulls, _, err := client.PullRequests.List(ctx, orgName, name, nil)
+			if err != nil {
+				panic(err)
 			}
 
-			prs = append(prs, PullRequest{
-				title:     *pull.Title,
-				by:        *pull.User.Login,
-				link:      *pull.HTMLURL,
-				state:     state,
-				updatedAt: *pull.UpdatedAt,
-			})
-		}
+			var prs []PullRequest
+			for _, pull := range pulls {
+				state := "OK"
+				if *pull.Draft {
+					state = "Draft"
+				}
 
-		t := Repository{RepoName: *repo.Name, Pulls: prs}
-		repoPrs = append(repoPrs, t)
+				prs = append(prs, PullRequest{
+					title:     *pull.Title,
+					by:        *pull.User.Login,
+					link:      *pull.HTMLURL,
+					state:     state,
+					updatedAt: *pull.UpdatedAt,
+				})
+			}
+
+			channel <- Repository{RepoName: name, Pulls: prs}
+		}(&wwg, *repo.Name)
 	}
 
-	for _, r := range repoPrs {
-		hasFreshPrs := false
-		for _, pull := range r.Pulls {
-			if isFreshPullRequest(pull) {
-				hasFreshPrs = true
-				break
-			}
-		}
-		if !hasFreshPrs || len(r.Pulls) == 0 {
-			continue
+	var rwg sync.WaitGroup
+	rwg.Add(1)
+	go func(wg *sync.WaitGroup, channel <-chan Repository) {
+		defer wg.Done()
+
+		var repos []Repository
+		for repo := range channel {
+			repos = append(repos, repo)
 		}
 
-		fmt.Println(r.RepoName)
-		for _, pull := range r.Pulls {
-			if !isFreshPullRequest(pull) {
+		for _, r := range repos {
+			hasFreshPrs := false
+			for _, pull := range r.Pulls {
+				if isFreshPullRequest(pull) {
+					hasFreshPrs = true
+					break
+				}
+			}
+			if !hasFreshPrs || len(r.Pulls) == 0 {
 				continue
 			}
 
-			fmt.Println("  ", pull.state+" - "+pull.by+" -> "+pull.title)
-			fmt.Println("    ", pull.link)
+			fmt.Println(r.RepoName)
+			for _, pull := range r.Pulls {
+				if !isFreshPullRequest(pull) {
+					continue
+				}
+
+				fmt.Println("  ", pull.state+" - "+pull.by+" -> "+pull.title)
+				fmt.Println("    ", pull.link)
+			}
 		}
-	}
+	}(&rwg, channel)
+
+	wwg.Wait()
+	close(channel)
+	rwg.Wait()
 }
 
 func isFreshPullRequest(pr PullRequest) bool {

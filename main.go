@@ -15,15 +15,6 @@ import (
 	"golang.org/x/oauth2"
 )
 
-func authenticatedGithubClient(accessToken string) *github.Client {
-	ts := oauth2.StaticTokenSource(
-		&oauth2.Token{AccessToken: accessToken},
-	)
-	tc := oauth2.NewClient(context.Background(), ts)
-
-	return github.NewClient(tc)
-}
-
 type PullRequestStatus int
 
 const (
@@ -81,12 +72,20 @@ func readConfigFile() (Config, error) {
 	file, _ := os.ReadFile(filepath.Join(home, ".pr-checker", "config.json"))
 
 	var config Config
-	// read the confs from here and that's it!
 	if err := json.Unmarshal(file, &config); err != nil {
 		return Config{}, fmt.Errorf("failed to parse config file. Error: %s", err)
 	}
 
 	return config, nil
+}
+
+func authenticatedGithubClient(accessToken string) *github.Client {
+	ts := oauth2.StaticTokenSource(
+		&oauth2.Token{AccessToken: accessToken},
+	)
+	tc := oauth2.NewClient(context.Background(), ts)
+
+	return github.NewClient(tc)
 }
 
 func main() {
@@ -95,12 +94,19 @@ func main() {
 		orgName     string
 		ugly        bool
 		showLegacy  bool
+		version     bool
 	)
 	flag.StringVar(&accessToken, "token", "", "Github access token")
 	flag.StringVar(&orgName, "org-name", "", "Organization name")
-	flag.BoolVar(&ugly, "be-ugly", false, "Use no color, nothing fancy mode")
-	flag.BoolVar(&showLegacy, "show-legacy", false, "Show PRs older than 2 weeks")
+	flag.BoolVar(&ugly, "be-ugly", false, "Use no color and nothing fancy mode")
+	flag.BoolVar(&showLegacy, "include-legacy", false, "Show PRs older than 2 weeks")
+	flag.BoolVar(&version, "version", false, "Print the version number and exit")
 	flag.Parse()
+
+	if version {
+		fmt.Println("pr-checker 1.0.0")
+		os.Exit(0)
+	}
 
 	configExists, err := configFileExists()
 	if err != nil {
@@ -161,7 +167,6 @@ func main() {
 
 		go func(wg *sync.WaitGroup, name string) {
 			defer wg.Done()
-			// fmt.Println(name + "\n")
 			pulls, _, err := client.PullRequests.List(ctx, orgName, name, nil)
 			if err != nil {
 				panic(err)
@@ -231,21 +236,19 @@ func main() {
 					status := "Ready"
 					if pull.state == Draft {
 						status = "Draft"
-
 					}
 					fmt.Printf("  %s\t- %s => %s (%s)\n", status, pull.by, pull.title, pull.link)
-					continue
-				}
-
-				fmt.Print("  ")
-				if pull.state == Draft {
-					fmt.Printf("%sDraft%s", white, reset)
 				} else {
-					fmt.Printf("%sReady%s", green, reset)
+					fmt.Print("  ")
+					if pull.state == Draft {
+						fmt.Printf("%sDraft%s", white, reset)
+					} else {
+						fmt.Printf("%sReady%s", green, reset)
+					}
+					fmt.Printf("\t- %s => ", pull.by)
+					fmt.Printf("\033]8;;%s\a%s\033]8;;\a", pull.link, pull.title)
+					fmt.Printf("\n")
 				}
-				fmt.Printf("\t- %s => ", pull.by)
-				fmt.Printf("\033]8;;%s\a%s\033]8;;\a", pull.link, pull.title)
-				fmt.Printf("\n")
 			}
 		}
 	}(&rwg, channel)

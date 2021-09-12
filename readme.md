@@ -18,15 +18,13 @@ Infra
 
 Simple way:
 
--   [Download the macos binary from releases](https://github.com/mkauppila/pr-checker/releases/tag/release-1.00-macos)
--   copy the binary `pr-checker` somewhere under your `$PATH`
+-   [Download the macOS binary from releases](https://github.com/mkauppila/pr-checker/releases/tag/release-1.00-macos)
 
 With [go tooling](https://golang.org) installed:
 
 -   run `go build`
--   copy the binary `pr-checker` somewhere under your `$PATH`
 
-Build with `go build` and copy the binary `pr-checker` somewhere under your `$PATH`. This requires [Go](https://golang.org) tooling to be installed.
+Copy the downloaded (or freshly built) binary to `/usr/local/bin/`.
 
 ## Run and configure
 
